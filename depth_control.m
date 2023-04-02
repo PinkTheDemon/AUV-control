@@ -92,23 +92,37 @@ for i = 1:N
         A = [[A1,-1]; [BA,0]];% + alpha(eta); % alpha为RL项
         b = [b1; Kb*etab+BB];% + beta(eta); % beta为RL项
         result = quadprog(blkdiag(eye(m),p), zeros(m+1,1), A, b);
-        ydot2 = result(1:2);
+        ydot2m = result(1:2);
 %         A = [A1; -BA];
 %         b = [b1; Kb*etab+BB];
-%         [ydot2,favl,exitflag] = quadprog(eye(m), zeros(m,1), A, b);
+%         [ydot2m,favl,exitflag] = quadprog(eye(m), zeros(m,1), A, b);
 
+        % gurobi求解二次规划 ----------------------------------------------
+%         model.Q = sparse(blkdiag(eye(m),p));
+%         model.A = sparse(A);
+%         model.rhs = b;
+%         model.lb = [-Inf;-Inf;-Inf];
+%         params.outputflag = 0;
+%         results = gurobi(model,params);
+%         if isfield(results, 'x') 
+%             ydot2g = results.x(1:2);
+%         end
         % 手动求解二次规划 -------------------------------------------------
-%         ydot2 = [0;0];
-%         if max(A*ydot2 - b) > 0
-%             ydot2 = -A1.'*abs(b1)/norm(A1)/norm(A1);
+%         A1 = A(1,:);
+%         A2 = A(2,:);
+%         ydot2s = [0;0;0];
+%         if max(A*ydot2s - b) > 0
+%             ydot2s = -A1.'*abs(b(1))/norm(A1)/norm(A1);
 %         end
-%         if max(A*ydot2 - b) > 0
-%             ydot2 = BA.'*abs(Kb*etab+BB)/norm(BA)/norm(BA);
+%         if max(A*ydot2s - b) > 1e-10
+%             ydot2s = -A2.'*abs(b(2))/norm(A2)/norm(A2);
 %         end
-%         if max(A*ydot2 - b) > 0
-%             ydot2 = A\b; % A不满秩的情况，前面两种一定有解
+%         if max(A*ydot2s - b) > 1e-10
+%             ydot2s = A\b; % A不满秩的情况，前面两种一定有解
 %         end
+%         ydot2s = ydot2s(1:2);
         % -----------------------------------------------------------------
+        ydot2 = ydot2m;
     else
         ydot2 = [0;0];
     end
