@@ -72,12 +72,12 @@ for i = 1:N
     theta = x(5);
     s2    = sin(theta);
     c2    = cos(theta);
-    zdot  = w*c2 - u*s2;
-    xpdot = w*s2 + u*c2;
-    thetadot = q;
+    dz  = w*c2 - u*s2;
+    dxp = w*s2 + u*c2;
+    dtheta = q;
 
     % CLF
-    eta = [(z-zr(xpos)); theta; zdot; thetadot];
+    eta = [(z-zr(xpos)); theta; dz; dtheta];
     lamdaQ = min(eig(Q)); % Q的最小特征值
     lamdaP = max(eig(P)); % P的最大特征值
     gamma = lamdaQ/lamdaP;
@@ -92,10 +92,10 @@ for i = 1:N
         A = [[A1,-1]; [BA,0]];% + alpha(eta); % alpha为RL项
         b = [b1; Kb*etab+BB];% + beta(eta); % beta为RL项
         result = quadprog(blkdiag(eye(m),p), zeros(m+1,1), A, b);
-        ydot2m = result(1:2);
+        ddym = result(1:2);
 %         A = [A1; -BA];
 %         b = [b1; Kb*etab+BB];
-%         [ydot2m,favl,exitflag] = quadprog(eye(m), zeros(m,1), A, b);
+%         [ddym,favl,exitflag] = quadprog(eye(m), zeros(m,1), A, b);
 
         % gurobi求解二次规划 ----------------------------------------------
 %         model.Q = sparse(blkdiag(eye(m),p));
@@ -105,40 +105,40 @@ for i = 1:N
 %         params.outputflag = 0;
 %         results = gurobi(model,params);
 %         if isfield(results, 'x') 
-%             ydot2g = results.x(1:2);
+%             ddyg = results.x(1:2);
 %         end
         % 手动求解二次规划 -------------------------------------------------
 %         A1 = A(1,:);
 %         A2 = A(2,:);
-%         ydot2s = [0;0;0];
-%         if max(A*ydot2s - b) > 0
-%             ydot2s = -A1.'*abs(b(1))/norm(A1)/norm(A1);
+%         ddys = [0;0;0];
+%         if max(A*ddys - b) > 0
+%             ddys = -A1.'*abs(b(1))/norm(A1)/norm(A1);
 %         end
-%         if max(A*ydot2s - b) > 1e-10
-%             ydot2s = -A2.'*abs(b(2))/norm(A2)/norm(A2);
+%         if max(A*ddys - b) > 1e-10
+%             ddys = -A2.'*abs(b(2))/norm(A2)/norm(A2);
 %         end
-%         if max(A*ydot2s - b) > 1e-10
-%             ydot2s = A\b; % A不满秩的情况，前面两种一定有解
+%         if max(A*ddys - b) > 1e-10
+%             ddys = A\b; % A不满秩的情况，前面两种一定有解
 %         end
-%         ydot2s = ydot2s(1:2);
+%         ddys = ddys(1:2);
         % -----------------------------------------------------------------
-        ydot2 = ydot2m;
+        ddy = ddym;
     else
-        ydot2 = [0;0];
+        ddy = [0;0];
     end
     % u恒定 ---------------------------------------------------------------
     % 计算当前状态下的模型参数
     [F1, G1, F2, G2] = REMUS_XOZ(x); % 这是标称模型，与实际模型有误差
-    mu = [G1*c2; G2]\(ydot2 - [F1*c2-w*q*s2-u*q*c2; F2]);
+    mu = [G1*c2; G2]\(ddy - [F1*c2-w*q*s2-u*q*c2; F2]);
     % dynamics (real dynamics, different from nominal model)
-    xdot = [        0      ;
+    dx = [        0      ;
             F1+w1( )+ G1*mu;
             F2+w2( )+ G2*mu;
            -s2*u    + c2* w;
                           q];
-    Bdot2 = BA*ydot2+BB;
+    ddB = BA*ddy+BB;
     % 指标计算
-    Y_ses(:,i) = [ydot2; mu];
+    Y_ses(:,i) = [ddy; mu];
     V = eta.'*Peps*eta;
     V_ses(i) = V; % 为什么V会在某一段有抖动上升？因为仿真步长太大
 
@@ -151,11 +151,11 @@ for i = 1:N
 %     Y_ses(:,i) = [ydot2; mu];
 %     V = eta.'*Peps*eta;
 %     V_ses(i) = V;
-%     xdot = [      0      ;
-%             F1    + G1*mu;
-%             F2    + G2*mu;
-%            -s2*u  + c2*w ;
-%                        q ];
+%     dx = [      0      ;
+%           F1    + G1*mu;
+%           F2    + G2*mu;
+%          -s2*u  + c2*w ;
+%                      q ];
     % ---------------------------------------------------------------------
 
     % u变化 ---------------------------------------------------------------
@@ -176,16 +176,16 @@ for i = 1:N
 %     V = eta.'*Peps*eta;
 %     V_ses(i) = V;
 %     
-%     xdot = [F1   + G1*mu;
-%             F2   + G2*mu;
-%             F3   + G3*mu;
-%            -s2*u + c2*w ;
-%                       q ];
+%     dx = [F1   + G1*mu;
+%           F2   + G2*mu;
+%           F3   + G3*mu;
+%          -s2*u + c2*w ;
+%                     q ];
     % ---------------------------------------------------------------------
 
-    x = x + xdot*Ts;
+    x = x + dx*Ts;
     x_ses(:,i) = x;
-    xpos = xpos + xpdot*Ts;
+    xpos = xpos + dxp*Ts;
     x_pos(:,i) = xpos;
 end
 
@@ -254,7 +254,7 @@ function ref_traj = zr(x)
 end
 
 %% define barrier function
-function [Bx, Bdot, BA, BB] = B(x)
+function [Bx, dB, BA, BB] = B(x)
 % pi/2 - theta > 0; pi/2 + theta > 0; 10.5 + z > 0
 % B(x) += -log(a) +log(a+1)
     u = x(1);
@@ -272,14 +272,14 @@ function [Bx, Bdot, BA, BB] = B(x)
 %     Bx = Bx -log(b) +log(b+1);
     Bx = Bx -log(c) +log(c+1);
 
-% Bdot(x) += -(1/a -1/(a+1))*adot;
-    Bdot = 0;%-(1/a -1/(a+1))*(-q);
-%     Bdot = Bdot - (1/b -1/(b+1))*q;
-    Bdot = Bdot - (1/c -1/(c+1))*(w*c2-u*s2);
+% dB(x) += -(1/a -1/(a+1))*adot;
+    dB = 0;%-(1/a -1/(a+1))*(-q);
+%     dB = dB - (1/b -1/(b+1))*q;
+    dB = dB - (1/c -1/(c+1))*(w*c2-u*s2);
 
-% Bdot2(x) = BA*ydot2 + BB
-% BA += -(1/a -1/(a+1))*adot2
-% BB += (1/a^2 -1/(a+1)^2)*adot^2
+% ddB(x) = BA*ddy + BB
+% BA += -(1/a -1/(a+1))*da^2
+% BB += (1/a^2 -1/(a+1)^2)*da^2
     BA(1) = -(1/c -1/(c+1));
     BA(2) = 0;%1/a -1/(a+1);
 %     BA(2) = BA(1) -(1/b -1/(b+1));
