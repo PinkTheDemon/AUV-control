@@ -135,7 +135,6 @@ for i = 1:N
             F2+w2( )+ G2*mu;
            -s2*u    + c2* w;
                           q];
-    ddB = BA*ddy+BB;
     % 指标计算
     Y_ses(:,i) = [ddy; mu];
     V = eta.'*Peps*eta;
