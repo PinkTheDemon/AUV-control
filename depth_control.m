@@ -46,7 +46,9 @@ R = 1*eye(2);
 Meps = kron([1/epsilon 0;0 1], eye(m));
 P = are(F, G/R*G.', Q); % Riccati方程的解
 Peps = Meps * P * Meps;
-% Peps = P;
+lamdaQ = min(eig(Q)); % Q的最小特征值
+lamdaP = max(eig(P)); % P的最大特征值
+gamma = lamdaQ/lamdaP;
 
 % CBF极点配置计算Kb
 Fb = [0 1;0 0];
@@ -78,9 +80,6 @@ for i = 1:N
 
     % CLF
     eta = [(z-zr(xpos)); theta; dz; dtheta];
-    lamdaQ = min(eig(Q)); % Q的最小特征值
-    lamdaP = max(eig(P)); % P的最大特征值
-    gamma = lamdaQ/lamdaP;
     if sum(eta.'*eta) ~= 0
         % CLF
         A1 = 2.*eta.'*Peps*G;
