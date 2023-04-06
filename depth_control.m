@@ -11,7 +11,7 @@ clear ; clc ; close ;
 
 % system constant value
 Tf = 20;   % 仿真总时间
-Ts = 0.01; % 单步时间(s)
+Ts = 0.001; % 单步时间(s)
 N  = Tf/Ts;
 
 %% controller
@@ -23,7 +23,10 @@ N  = Tf/Ts;
 x     = zeros(5,1);
 x(1)  = 5;
 x(4)  = -5;
-% x(5)  = 0.15;
+x(5)  = 0.15;
+dx = zeros(5,1);
+ddylast = zeros(2,1);
+ddyreal = zeros(2,1);
 x_ses = zeros(5,N);
 x_pos = zeros(1,N);
 xpos  = 0;
@@ -130,6 +133,7 @@ for i = 1:N
     [F1, G1, F2, G2] = REMUS_XOZ(x); % 这是标称模型，与实际模型有误差
     mu = [G1*c2; G2]\(ddy - [F1*c2-w*q*s2-u*q*c2; F2]);
     % dynamics (real dynamics, different from nominal model)
+    ddyreal = ([-s2*u+c2*w;q] - dx(4:5))/Ts;
     dx = [        0      ;
             F1+w1( )+ G1*mu;
             F2+w2( )+ G2*mu;
@@ -181,10 +185,12 @@ for i = 1:N
 %                     q ];
     % ---------------------------------------------------------------------
 
+    % step forward
     x = x + Ts.*dx;
     x_ses(:,i) = x;
     xpos = xpos + dxp*Ts;
     x_pos(:,i) = xpos;
+    ddylast = ddy;
 end
 
 %% plot
