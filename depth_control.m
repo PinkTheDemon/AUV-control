@@ -11,7 +11,7 @@ clear ; clc ; close ;
 
 % system constant value
 Tf = 20;   % 仿真总时间
-Ts = 0.001; % 单步时间(s)
+Ts = 0.01; % 单步时间(s)
 N  = Tf/Ts;
 
 %% controller
