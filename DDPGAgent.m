@@ -73,6 +73,10 @@ trainingOpts = rlTrainingOptions( ...
     Plots = "training-progress", ...
     StopTrainingCriteria = 'EpisodeCount', ...
     StopTrainingValue = 450);
+trainingOpts.UseParallel = true;
+trainingOpts.ParallelizationOptions.Mode = 'async';
+trainingOpts.ParallelizationOptions.StepsUntilDataIsSent = 32;
+trainingOpts.ParallelizationOptions.DataToSendFromWorkers = 'Experiences';
 
 dotraining = true;
 if dotraining

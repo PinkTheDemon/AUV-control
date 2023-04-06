@@ -92,8 +92,13 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
                 p = 1;
                 A = [[A1,-1]; [BA,0]] + [Action(1); Action(2)]; % action为RL项
                 b = [b1; this.Kb*etab+BB]  + [Action(3); Action(4)];
-                result = quadprog(blkdiag(eye(this.m),p), zeros(this.m+1,1), A, b);
-                ddy = result(1:2);
+                IsDone = sum(isinf(A)) + sum(isinf(b));
+                if ~IsDone
+                    result = quadprog(blkdiag(eye(this.m),p), zeros(this.m+1,1), A, b);
+                    ddy = result(1:2);
+                else 
+                    ddy = [0;0];
+                end
             else 
                 ddy = [0;0];
             end
@@ -123,8 +128,7 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
             this.stepnum = this.stepnum + 1;
             
             % Check terminal condition，提前结束条件是跳出安全范围
-            [Bx,~,~,~] = B(this);
-            IsDone = ~isreal(Bx);
+            IsDone = IsDone || ~isreal(Bx);
             IsDone = IsDone || abs(Bx) == Inf;
             IsDone = IsDone || this.stepnum>=this.Maxstepnum;
             this.IsDone = IsDone;
