@@ -92,7 +92,9 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
                 p = 1;
                 A = [[A1,-1]; [BA,0]] + [Action(1); Action(2)]; % action为RL项
                 b = [b1; this.Kb*etab+BB]  + [Action(3); Action(4)];
-                IsDone = sum(isinf(A)) + sum(isinf(b));
+                IsDone = any(any(isinf(A)+isinf(b)));
+                IsDone = IsDone || any(isinf(this.State));
+                IsDone = IsDone || ~isreal(Bx);
                 if ~IsDone
                     result = quadprog(blkdiag(eye(this.m),p), zeros(this.m+1,1), A, b);
                     ddy = result(1:2);
@@ -128,8 +130,6 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
             this.stepnum = this.stepnum + 1;
             
             % Check terminal condition，提前结束条件是跳出安全范围
-            IsDone = IsDone || ~isreal(Bx);
-            IsDone = IsDone || abs(Bx) == Inf;
             IsDone = IsDone || this.stepnum>=this.Maxstepnum;
             this.IsDone = IsDone;
             
@@ -152,7 +152,7 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
             % z
             z0 = -5;
             % theta
-            theta0 = 0; %0.15;
+            theta0 = 0.15;
             InitialObservation = [u0;w0;q0;z0;theta0];
 
             % CLF系数矩阵Peps计算
@@ -168,10 +168,12 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
             % CBF极点配置计算Kb
             Fb = [0 1;0 0];
             Gb = [0;1];
-            poles = [-1+5i, -1-5i];
+            poles = [-1+2i, -1-2i];
             kb = place(Fb, Gb, poles); % 极点配置
 
             this.State = InitialObservation;
+            this.xpos = 0;
+            this.dState = zeros(5,1);
             this.Peps = peps;
             this.Gamma = gamma;
             this.Kb = kb;

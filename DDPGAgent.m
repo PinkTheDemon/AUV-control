@@ -64,7 +64,7 @@ agentOptions.NoiseOptions.VarianceDecayRate = 1e-2;
 
 agent = rlDDPGAgent(actor,critic,agentOptions);
 
-maxepisodes = 5e2;
+maxepisodes = 2e2;
 maxsteps = ceil(Tf/Ts);
 trainingOpts = rlTrainingOptions( ...
     MaxEpisodes = maxepisodes, ...
@@ -72,13 +72,14 @@ trainingOpts = rlTrainingOptions( ...
     Verbose = false, ...
     Plots = "training-progress", ...
     StopTrainingCriteria = 'EpisodeCount', ...
-    StopTrainingValue = 450);
-trainingOpts.UseParallel = true;
-trainingOpts.ParallelizationOptions.Mode = 'async';
-trainingOpts.ParallelizationOptions.StepsUntilDataIsSent = 32;
-trainingOpts.ParallelizationOptions.DataToSendFromWorkers = 'Experiences';
+    StopTrainingValue = 150);
+% trainingOpts.UseParallel = true;
+% trainingOpts.ParallelizationOptions.Mode = 'async';
+% trainingOpts.ParallelizationOptions.StepsUntilDataIsSent = 32;
+% trainingOpts.ParallelizationOptions.DataToSendFromWorkers = 'Experiences';
 
 dotraining = true;
 if dotraining
     trainingStats = train(agent, env, trainingOpts);
 end
+generatePolicyFunction(agent);
