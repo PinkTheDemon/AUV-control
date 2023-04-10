@@ -24,7 +24,8 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
     
     properties % 这些是在每个step会变化的属性
         % Initialize system state [x,dx,theta,dtheta]'
-        State   = zeros(5,1);
+        State   = zeros(4,1);
+        x       = zeros(5,1);
         dState  = zeros(5,1);
         xpos    = 0;
         ddylast = zeros(2,1);
@@ -42,7 +43,7 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
         % Change class name and constructor name accordingly
         function this = MyEnvClass()
             % Initialize Observation settings
-            ObservationInfo = rlNumericSpec([5 1]);
+            ObservationInfo = rlNumericSpec([4 1]);
             ObservationInfo.Name = 'AUV States';
             ObservationInfo.Description = 'z, dz, theta, dtheta';
             
@@ -66,11 +67,12 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
 %             mu = getcontrol(this,Action);
             
             % Unpack state vector
-            u     = this.State(1);
-            w     = this.State(2);
-            q     = this.State(3);
-            z     = this.State(4);
-            theta = this.State(5);
+            u     = this.x(1);
+            w     = this.x(2);
+            q     = this.x(3);
+            z     = this.x(4);
+            theta = this.x(5);
+            eta   = this.State();
             
             % Cache to avoid recomputation
             s2    = sin(theta);
@@ -79,7 +81,7 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
             dz  = w*c2 - u*s2;
             dtheta = q;
 
-            eta = [(z-zr(this)); theta; dz; dtheta];
+%             eta = [(z-zr(this)); theta; dz; dtheta];
             if sum(eta.'*eta) ~= 0
                 % CLF
                 A1 = 2.*eta.'*this.Peps*this.G;
@@ -93,7 +95,7 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
                 A = [[A1,-1]; [BA,0]] + [Action(1); Action(2)]; % action为RL项
                 b = [b1; this.Kb*etab+BB]  + [Action(3); Action(4)];
                 IsDone = any(any(isinf(A)+isinf(b)));
-                IsDone = IsDone || any(isinf(this.State));
+                IsDone = IsDone || any(isinf(this.x));
                 IsDone = IsDone || ~isreal(Bx);
                 if ~IsDone
                     result = quadprog(blkdiag(eye(this.m),p), zeros(this.m+1,1), A, b);
@@ -103,8 +105,9 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
                 end
             else 
                 ddy = [0;0];
+                IsDone = 0;
             end
-            [F1, G1, F2, G2] = REMUS_XOZ(this.State); % 这是标称模型，与实际模型有误差
+            [F1, G1, F2, G2] = REMUS_XOZ(this.x); % 这是标称模型，与实际模型有误差
             mu = [G1*c2; G2]\(ddy - [F1*c2-w*q*s2-u*q*c2; F2]);
 
             % Apply motion equations
@@ -120,10 +123,11 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
             ddyreal = (dx(4:5) - this.dState(4:5))/this.Ts;
             
             % Euler integration
-            Observation = this.State + this.Ts.*dx;
+            Observation = [(z-zr(this)); theta; dz; dtheta];
 
             % Update system states
             this.State  = Observation;
+            this.x = this.x + this.Ts.*dx;
             this.dState = dx;
             this.xpos = this.xpos + this.Ts*dxp;
             this.ddylast = ddy;
@@ -153,7 +157,8 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
             z0 = -5;
             % theta
             theta0 = 0.15;
-            InitialObservation = [u0;w0;q0;z0;theta0];
+            InitialObservation = [0;0;0;0];
+            Initialx = [u0;w0;q0;z0;theta0];
 
             % CLF系数矩阵Peps计算
             Q = 1*eye(this.m*this.r); % 任意正定矩阵,mr×mr
@@ -172,12 +177,14 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
             kb = place(Fb, Gb, poles); % 极点配置
 
             this.State = InitialObservation;
+            this.x = Initialx;
             this.xpos = 0;
             this.dState = zeros(5,1);
             this.Peps = peps;
             this.Gamma = gamma;
             this.Kb = kb;
             this.stepnum = 0;
+            this.IsDone = false;
             
             % (optional) use notifyEnvUpdated to signal that the 
             % environment has been updated (e.g. to update visualization)
@@ -241,11 +248,11 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
         function [Bx, dB, BA, BB] = B(this)
         % pi/2 - theta > 0; pi/2 + theta > 0; 10.5 + z > 0
         % B(x) += -log(a) +log(a+1)
-            u = this.State(1);
-            w = this.State(2);
-            q = this.State(3);
-            z = this.State(4);
-            theta = this.State(5);
+            u = this.x(1);
+            w = this.x(2);
+            q = this.x(3);
+            z = this.x(4);
+            theta = this.x(5);
             c2 = cos(theta);
             s2 = sin(theta);
 %             a = 0.4 - theta;
@@ -306,7 +313,7 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
         
         % (optional) Properties validation through set methods
         function set.State(this,state)
-            validateattributes(state,{'numeric'},{'finite','real','vector','numel',5},'','State');
+            validateattributes(state,{'numeric'},{'finite','real','vector','numel',4},'','State');
             this.State = double(state(:));
             notifyEnvUpdated(this);
         end
