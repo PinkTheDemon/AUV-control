@@ -90,15 +90,18 @@ for i = 1:N
         % CBF
         [Bx, Bdot, BA, BB] = B(x);
         etab = [Bx; Bdot];
-        p = 1; % 放松CLF
-        Action = evaluatePolicy(x);
-        A = [[A1,-1]; [BA,0]] + [Action(1); Action(2)]; % alpha为RL项
-        b = [b1; Kb*etab+BB] + [Action(3); Action(4)]; % beta为RL项
-        result = quadprog(blkdiag(eye(m),p), zeros(m+1,1), A, b);
-        ddym = result(1:2);
-%         A = [A1; -BA];
-%         b = [b1; Kb*etab+BB];
-%         [ddym,favl,exitflag] = quadprog(eye(m), zeros(m,1), A, b);
+        Action = zeros(4,1);
+%         Action = evaluatePolicy(x);
+        Action(3) = -2.*eta.'*Peps*G*[w1()*c2;w2()]; % Action 真实值
+        Action(4) = (1/(11.4+z)-1/(10.4+z))*w1()*c2; % Action 真实值
+%         p = 1; % 放松CLF
+%         A = [[A1,-1];[BA,0]] + [Action(1); Action(2)];
+%         b = [b1; Kb*etab+BB] + [Action(3); Action(4)];
+%         result = quadprog(blkdiag(eye(m),p), zeros(m+1,1), A, b);
+%         ddym = result(1:2);
+        A = [A1; -BA] + [Action(1); Action(2)];
+        b = [b1; Kb*etab+BB] + [Action(3); Action(4)];
+        [ddym,favl,exitflag] = quadprog(eye(m), zeros(m,1), A, b);
 
         % gurobi求解二次规划 ----------------------------------------------
 %         model.Q = sparse(blkdiag(eye(m),p));
@@ -135,7 +138,7 @@ for i = 1:N
     mu = [G1*c2; G2]\(ddy - [F1*c2-w*q*s2-u*q*c2; F2]);
     % dynamics (real dynamics, different from nominal model)
     ddyreal = ([-s2*u+c2*w;q] - dx(4:5))/Ts;
-    dx = [        0      ;
+    dx = [        0        ;
             F1+w1( )+ G1*mu;
             F2+w2( )+ G2*mu;
            -s2*u    + c2* w;
@@ -271,7 +274,7 @@ function [Bx, dB, BA, BB] = B(x)
     s2 = sin(theta);
 %     a = 0.4 - theta;
 %     b = 0.4 + theta;
-    c = 10.4 + z;
+    c = 10.5 + z;
 
     Bx = 0;%-log(a) +log(a+1);
 %     Bx = Bx -log(b) +log(b+1);
@@ -287,7 +290,7 @@ function [Bx, dB, BA, BB] = B(x)
 % BB += (1/a^2 -1/(a+1)^2)*da^2
     BA(1) = -(1/c -1/(c+1));
     BA(2) = 0;%1/a -1/(a+1);
-%     BA(2) = BA(1) -(1/b -1/(b+1));
+%     BA(2) = BA(2) -(1/b -1/(b+1));
     BB = 0;%(1/a^2 -1/(a+1)^2)*q^2;
 %     BB = BB + (1/b^2 -1/(b+1)^2)*q^2;
     BB = BB + (1/c^2 -1/(c+1)^2)*(w*c2-u*s2)^2;
