@@ -38,3 +38,7 @@ gurobi求的和MATLAB求的不一样，MATLAB和自己的是一样的，暂且�
 ![](https://z4a.net/images/2023/04/11/305a08fb815e7585ee4e24cc202c4e5c.png)
 
 图2：添加人为误差补正项后，稳态误差被消除
+
+![](https://z4a.net/images/2023/04/11/CLF.png)
+
+图3：对CLF进行放松后，即使添加了正确的人为误差补正项，仍然会有一点稳态误差
