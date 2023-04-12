@@ -20,6 +20,9 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
         Gamma = 0;
         Kb = zeros(1*2);
 
+        % 奖励函数权重系数
+        wv = 1;
+        wb = 1;
     end
     
     properties % 这些是在每个step会变化的属性
@@ -106,6 +109,7 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
             else 
                 ddy = [0;0];
                 IsDone = 0;
+                BA = [0,0];
             end
             [F1, G1, F2, G2] = REMUS_XOZ(this.x); % 这是标称模型，与实际模型有误差
             mu = [G1*c2; G2]\(ddy - [F1*c2-w*q*s2-u*q*c2; F2]);
@@ -138,7 +142,7 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
             this.IsDone = IsDone;
             
             % Get reward
-            Reward = getReward(this ,ddyreal);
+            Reward = getReward(this, Action, ddyreal, BA);
             
             % (optional) use notifyEnvUpdated to signal that the 
             % environment has been updated (e.g. to update visualization)
@@ -287,11 +291,13 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
         % Reward function 这样设置奖励函数的话，反正都走不到2000步，
         % 那提前结束奖励就会大了。应该根据距离2k步的剩余步数设置提前终止的惩罚
         % 奖励设置错误
-        function Reward = getReward(this, ddyreal)
+        function Reward = getReward(this, Action, ddyreal, BA)
             if this.stepnum == 1
                 Reward = 0;
             elseif ~this.IsDone
-                Reward = -norm(this.ddylast -ddyreal)^2;
+                Reward = -this.wv*(2.*this.State.'*this.Peps*this.G*ddyreal - ...
+                          2.*this.State.'*this.Peps*this.G*this.ddylast + Action(3))^2 ...
+                         -this.wb*(BA*ddyreal - BA*this.ddylast -Action(4))^2;
             elseif this.IsDone
                 Reward = -1e3*(this.Maxstepnum - this.stepnum);
             end
