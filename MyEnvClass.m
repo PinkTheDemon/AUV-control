@@ -21,8 +21,8 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
         Kb = zeros(1*2);
 
         % 奖励函数权重系数
-        wv = 1;
-        wb = 1;
+        wv = 0.01;
+        wb = 0.01;
     end
     
     properties % 这些是在每个step会变化的属性
@@ -53,6 +53,8 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
             % Initialize Action settings   
             ActionInfo = rlNumericSpec([4 1]);
             ActionInfo.Name = 'compensate term';
+            ActionInfo.LowerLimit = -1e3*ones(4,1);
+            ActionInfo.UpperLimit =  1e3*ones(4,1);
             
             % The following line implements built-in functions of RL env
             this = this@rl.env.MATLABEnvironment(ObservationInfo,ActionInfo);
@@ -97,7 +99,8 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
                 p = 1;
                 A = [[A1,-1]; [BA,0]] + [Action(1); Action(2)]; % action为RL项
                 b = [b1; this.Kb*etab+BB]  + [Action(3); Action(4)];
-                IsDone = any(any(isinf(A)+isinf(b)));
+                IsDone = this.IsDone;
+                IsDone = IsDone || any(any(isinf(A)+isinf(b)));
                 IsDone = IsDone || any(isinf(this.x));
                 IsDone = IsDone || ~isreal(Bx);
                 if ~IsDone
@@ -292,14 +295,18 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
         % 那提前结束奖励就会大了。应该根据距离2k步的剩余步数设置提前终止的惩罚
         % 奖励设置错误
         function Reward = getReward(this, Action, ddyreal, BA)
-            if this.stepnum == 1
+            if this.stepnum == 1 || this.stepnum == 2
                 Reward = 0;
             elseif ~this.IsDone
                 Reward = -this.wv*(2.*this.State.'*this.Peps*this.G*ddyreal - ...
                           2.*this.State.'*this.Peps*this.G*this.ddylast + Action(3))^2 ...
                          -this.wb*(BA*ddyreal - BA*this.ddylast -Action(4))^2;
+                if isinf(Reward)
+%                     this.IsDone = 1;
+%                     Reward = -1e5;
+                end
             elseif this.IsDone
-                Reward = -1e3*(this.Maxstepnum - this.stepnum);
+                Reward = -1e5*(this.Maxstepnum - this.stepnum);
             end
         end
 
@@ -312,7 +319,7 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
         % (optional) Visualization method
         function plot(this)
             % Initiate the visualization
-            
+
             % Update the visualization
             envUpdatedCallback(this)
         end
