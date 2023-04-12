@@ -94,14 +94,14 @@ for i = 1:N
 %         Action = evaluatePolicy(x);
         Action(3) = -2.*eta.'*Peps*G*[w1()*c2;w2()]; % Action 真实值
         Action(4) = (1/(11.4+z)-1/(10.4+z))*w1()*c2; % Action 真实值
-%         p = 1; % 放松CLF
-%         A = [[A1,-1];[BA,0]] + [Action(1); Action(2)];
-%         b = [b1; Kb*etab+BB] + [Action(3); Action(4)];
-%         result = quadprog(blkdiag(eye(m),p), zeros(m+1,1), A, b);
-%         ddym = result(1:2);
-        A = [A1; -BA] + [Action(1); Action(2)];
+        p = 1; % 放松CLF
+        A = [[A1,-1];[BA,0]] + [Action(1); Action(2)];
         b = [b1; Kb*etab+BB] + [Action(3); Action(4)];
-        [ddym,favl,exitflag] = quadprog(eye(m), zeros(m,1), A, b);
+        result = quadprog(blkdiag(eye(m),p), zeros(m+1,1), A, b);
+        ddym = result(1:2);
+%         A = [A1; -BA] + [Action(1); Action(2)];
+%         b = [b1; Kb*etab+BB] + [Action(3); Action(4)];
+%         [ddym,favl,exitflag] = quadprog(eye(m), zeros(m,1), A, b);
 
         % gurobi求解二次规划 ----------------------------------------------
 %         model.Q = sparse(blkdiag(eye(m),p));
@@ -137,7 +137,7 @@ for i = 1:N
     [F1, G1, F2, G2] = REMUS_XOZ(x); % 这是标称模型，与实际模型有误差
     mu = [G1*c2; G2]\(ddy - [F1*c2-w*q*s2-u*q*c2; F2]);
     % dynamics (real dynamics, different from nominal model)
-    ddyreal = ([-s2*u+c2*w;q] - dx(4:5))/Ts;
+    ddyreal = ([-s2*u+c2*w;q] - dx(4:5))/Ts; % 根据状态量变化实际计算的真实ddy
     dx = [        0        ;
             F1+w1( )+ G1*mu;
             F2+w2( )+ G2*mu;
@@ -147,6 +147,8 @@ for i = 1:N
     Y_ses(:,i) = [ddy; mu];
     V = eta.'*Peps*eta;
     V_ses(i) = V; % 为什么V会在某一段有抖动上升？因为仿真步长太大
+    dV = 2.*eta.'*Peps*G*ddyreal; % 删去相同项，系数项不能约，因为Action是包括了系数项的
+    dVhat = 2.*eta.'*Peps*G*ddylast + 2.*eta.'*Peps*G*[w1()*c2;w2()];
 
 %     % 简单情况，比CLF效果反而要好，说明CLF中b项过于保守
 %     % 在LQR中，李函数的系数矩阵是什么呢？[Q + P*G/R*G.'*P]
@@ -194,7 +196,7 @@ for i = 1:N
     x_ses(:,i) = x;
     xpos = xpos + dxp*Ts;
     x_pos(:,i) = xpos;
-    ddylast = ddy;
+    ddylast = ddy; % 二次规划问题的解，误差的ddy
 end
 
 %% plot
