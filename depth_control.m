@@ -93,7 +93,7 @@ for i = 1:N
         Action = zeros(4,1);
 %         Action = evaluatePolicy(x);
         Action(3) = -2.*eta.'*Peps*G*[w1()*c2;w2()]; % Action 真实值
-        Action(4) = (1/(11.4+z)-1/(10.4+z))*w1()*c2; % Action 真实值
+        Action(4) = BA(1)*w1()*c2; % Action 真实值
         p = 1; % 放松CLF
         A = [[A1,-1];[BA,0]] + [Action(1); Action(2)];
         b = [b1; Kb*etab+BB] + [Action(3); Action(4)];
@@ -148,7 +148,9 @@ for i = 1:N
     V = eta.'*Peps*eta;
     V_ses(i) = V; % 为什么V会在某一段有抖动上升？因为仿真步长太大
     dV = 2.*eta.'*Peps*G*ddyreal; % 删去相同项，系数项不能约，因为Action是包括了系数项的
-    dVhat = 2.*eta.'*Peps*G*ddylast + 2.*eta.'*Peps*G*[w1()*c2;w2()];
+    dVhat = 2.*eta.'*Peps*G*ddylast - Action(3);
+    ddB = BA*ddyreal;
+    ddBhat = BA*ddylast + Action(4);
 
 %     % 简单情况，比CLF效果反而要好，说明CLF中b项过于保守
 %     % 在LQR中，李函数的系数矩阵是什么呢？[Q + P*G/R*G.'*P]
