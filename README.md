@@ -87,3 +87,7 @@ gurobi求的和MATLAB求的不一样，MATLAB和自己的是一样的，暂且�
 ![](https://z4a.net/images/2023/04/27/9.0i.png)
 
 **图2：i系数取9.0**
+
+![](https://z4a.net/images/2023/04/27/CBF.png)
+
+**图3：不人为添加常数项，无CBF约束**
