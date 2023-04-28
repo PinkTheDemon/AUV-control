@@ -114,6 +114,31 @@ BB = -(w*c2-u*s2)^2/(c+1)^2;
 
 ![](https://z4a.net/images/2023/04/28/Bx.png)
 
-图1：修改Bx的性能指标
+**图1：修改Bx的性能指标**
 
 可以看到状态量还是超出了范围，但在那附近pd放松其实也起到了一定的作用，只不过可能没能纠正过来
+
+20230428 调增Kb：
+
+调整Kb参数之后出现了理想的效果，CBF的效果是受Kb影响的，所以是否调整Kb就ok？
+
+```MATLAB
+poles = [-2+5i, -2-5i];
+Kb = place(Fb, Gb, poles); % 极点配置
+```
+
+```MATLAB
+    c = 10.2 + z;
+Bx = log(c+1);
+dB = (w*c2-u*s2)/(c+1);
+BA = [0,1/(c+1)];
+BB = -(w*c2-u*s2)^2/(c+1)^2;
+```
+
+![](https://z4a.net/images/2023/04/28/Kb2-5iCBF.png)
+
+**图1：无CBF**
+
+![](https://z4a.net/images/2023/04/28/Kb2-5iCBFdda4f155c9881a35.png)
+
+**图2：有CBF**
