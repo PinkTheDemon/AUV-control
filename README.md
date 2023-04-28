@@ -91,3 +91,29 @@ gurobi求的和MATLAB求的不一样，MATLAB和自己的是一样的，暂且�
 ![](https://z4a.net/images/2023/04/27/CBF.png)
 
 **图3：不人为添加常数项，无CBF约束**
+
+20230428 修改Bx尝试：
+
+把Bx换成在边界外也有定义的函数，可以看到，CBF并没有阻止状态量跳出约束条件范围
+
+```matlab
+    c = 10.2 + z;
+Bx = log(c+1);
+dB = (w*c2-u*s2)/(c+1);
+BA = [0,1/(c+1)];
+BB = -(w*c2-u*s2)^2/(c+1)^2;
+```
+
+```matlab
+		p = 100; % 放松CLF，目前的场景还不需要对p做调整
+        A = [[A1,-1];[BA,0]] + [Action(1); Action(2)];
+        b = [b1+max(0,0); Kb*etab+BB] + [Action(3); Action(4)];
+        result = quadprog(blkdiag(eye(m),p), zeros(m+1,1), A, b,[],[], [-Inf;-Inf;0]);
+        ddym = result(1:2);
+```
+
+![](https://z4a.net/images/2023/04/28/Bx.png)
+
+图1：修改Bx的性能指标
+
+可以看到状态量还是超出了范围，但在那附近pd放松其实也起到了一定的作用，只不过可能没能纠正过来
