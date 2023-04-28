@@ -10,7 +10,7 @@
 clear ; clc ; close ;
 
 % system constant value
-Tf = 20;   % 仿真总时间
+Tf = 60;   % 仿真总时间
 Ts = 0.01; % 单步时间(s)
 N  = Tf/Ts;
 
@@ -32,6 +32,7 @@ x_pos = zeros(1,N);
 xpos  = 0;
 V_ses = zeros(1,N);
 Y_ses = zeros(4,N);
+reward = 0;
 
 % control vector init
 mu = [0;0];
@@ -49,6 +50,7 @@ R = 1*eye(2);
 Meps = kron([1/epsilon 0;0 1], eye(m));
 P = are(F, G/R*G.', Q); % Riccati方程的解
 Peps = Meps * P * Meps;
+% Peps = P;
 lamdaQ = min(eig(Q)); % Q的最小特征值
 lamdaP = max(eig(P)); % P的最大特征值
 gamma = lamdaQ/lamdaP;
@@ -56,7 +58,7 @@ gamma = lamdaQ/lamdaP;
 % CBF极点配置计算Kb
 Fb = [0 1;0 0];
 Gb = [0;1];
-poles = [-1+5i, -1-5i];
+poles = [-2+5i, -2-5i];
 Kb = place(Fb, Gb, poles); % 极点配置
 
 % -------------------------------------------------------------------------
@@ -86,21 +88,22 @@ for i = 1:N
     if sum(eta.'*eta) ~= 0
         % CLF
         A1 = 2.*eta.'*Peps*G;
-        b1 = -eta.'*(F.'*Peps + Peps*F)*eta - gamma/epsilon.*eta.'*Peps*eta;
+        b1 = -eta.'*(F.'*Peps + Peps*F)*eta - gamma/epsilon.*eta.'*(Peps)*eta;
+%         Bx=0; Bdot=0; BA=[0,0]; BB=0;
         % CBF
         [Bx, Bdot, BA, BB] = B(x);
         etab = [Bx; Bdot];
         Action = zeros(4,1);
-%         Action = evaluatePolicy(x);
-        Action(3) = -2.*eta.'*Peps*G*[w1()*c2;w2()]; % Action 真实值
-        Action(4) = BA(1)*w1()*c2; % Action 真实值
-        p = 1; % 放松CLF
+%         Action = evaluatePolicy(eta);
+%         Action(3) = -2.*eta.'*Peps*G*[w1()*c2;w2()]; % Action 真实值
+%         Action(4) = BA(1)*w1()*c2; % Action 真实值
+        p = 100; % 放松CLF，目前的场景还不需要对p做调整
         A = [[A1,-1];[BA,0]] + [Action(1); Action(2)];
-        b = [b1; Kb*etab+BB] + [Action(3); Action(4)];
-        result = quadprog(blkdiag(eye(m),p), zeros(m+1,1), A, b);
+        b = [b1+max(0,0); Kb*etab+BB] + [Action(3); Action(4)];
+        result = quadprog(blkdiag(eye(m),p), zeros(m+1,1), A, b,[],[], [-Inf;-Inf;0]);
         ddym = result(1:2);
 %         A = [A1; -BA] + [Action(1); Action(2)];
-%         b = [b1; Kb*etab+BB] + [Action(3); Action(4)];
+%         b = [b1+10000; Kb*etab+BB] + [Action(3); Action(4)];
 %         [ddym,favl,exitflag] = quadprog(eye(m), zeros(m,1), A, b);
 
         % gurobi求解二次规划 ----------------------------------------------
@@ -151,6 +154,9 @@ for i = 1:N
     dVhat = 2.*eta.'*Peps*G*ddylast - Action(3);
     ddB = BA*ddyreal;
     ddBhat = BA*ddylast + Action(4);
+    if i > 1
+        reward = reward - (dV-dVhat)^2 - (ddB-ddBhat)^2;
+    end
 
 %     % 简单情况，比CLF效果反而要好，说明CLF中b项过于保守
 %     % 在LQR中，李函数的系数矩阵是什么呢？[Q + P*G/R*G.'*P]
@@ -278,34 +284,37 @@ function [Bx, dB, BA, BB] = B(x)
     s2 = sin(theta);
 %     a = 0.4 - theta;
 %     b = 0.4 + theta;
-    c = 10.5 + z;
-
-    Bx = 0;%-log(a) +log(a+1);
-%     Bx = Bx -log(b) +log(b+1);
-    Bx = Bx -log(c) +log(c+1);
-
-% dB(x) += -(1/a -1/(a+1))*adot;
-    dB = 0;%-(1/a -1/(a+1))*(-q);
-%     dB = dB - (1/b -1/(b+1))*q;
-    dB = dB - (1/c -1/(c+1))*(w*c2-u*s2);
-
-% ddB(x) = BA*ddy + BB
-% BA += -(1/a -1/(a+1))*da^2
-% BB += (1/a^2 -1/(a+1)^2)*da^2
-    BA(1) = -(1/c -1/(c+1));
-    BA(2) = 0;%1/a -1/(a+1);
-%     BA(2) = BA(2) -(1/b -1/(b+1));
-    BB = 0;%(1/a^2 -1/(a+1)^2)*q^2;
-%     BB = BB + (1/b^2 -1/(b+1)^2)*q^2;
-    BB = BB + (1/c^2 -1/(c+1)^2)*(w*c2-u*s2)^2;
+    c = 10.2 + z;
+Bx = log(c+1);
+dB = (w*c2-u*s2)/(c+1);
+BA = [0,1/(c+1)];
+BB = -(w*c2-u*s2)^2/(c+1)^2;
+%     Bx = 0;%-log(a) +log(a+1);
+% %     Bx = Bx -log(b) +log(b+1);
+%     Bx = Bx -log(c) +log(c+1);
+% 
+% % dB(x) += -(1/a -1/(a+1))*adot;
+%     dB = 0;%-(1/a -1/(a+1))*(-q);
+% %     dB = dB - (1/b -1/(b+1))*q;
+%     dB = dB - (1/c -1/(c+1))*(w*c2-u*s2);
+% 
+% % ddB(x) = BA*ddy + BB
+% % BA += -(1/a -1/(a+1))*da^2
+% % BB += (1/a^2 -1/(a+1)^2)*da^2
+%     BA(1) = -(1/c -1/(c+1));
+%     BA(2) = 0;%1/a -1/(a+1);
+% %     BA(2) = BA(2) -(1/b -1/(b+1));
+%     BB = 0;%(1/a^2 -1/(a+1)^2)*q^2;
+% %     BB = BB + (1/b^2 -1/(b+1)^2)*q^2;
+%     BB = BB + (1/c^2 -1/(c+1)^2)*(w*c2-u*s2)^2;
 
 end
 
 %% set model error
 function mderr1 = w1()
-    mderr1 = 1; %0.01*randn();
+    mderr1 = 0; %0.01*randn();
 end
 
 function mderr2 = w2()
-    mderr2 = 2; %1*randn();
+    mderr2 = 0; %1*randn();
 end
