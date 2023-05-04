@@ -59,7 +59,8 @@ gamma = lamdaQ/lamdaP;
 Fb = [0 1;0 0];
 Gb = [0;1];
 poles = [-2+5i, -2-5i];
-Kb = place(Fb, Gb, poles); % 极点配置
+% Kb = place(Fb, Gb, poles); % 极点配置
+Kb = [10,10];
 
 % -------------------------------------------------------------------------
 % % try yalmip
@@ -100,7 +101,7 @@ for i = 1:N
         p = 100; % 放松CLF，目前的场景还不需要对p做调整
         A = [[A1,-1];[BA,0]] + [Action(1); Action(2)];
         b = [b1+max(0,0); Kb*etab+BB] + [Action(3); Action(4)];
-        result = quadprog(blkdiag(eye(m),p), zeros(m+1,1), A, b,[],[], [-Inf;-Inf;0]);
+        result = quadprog(blkdiag(eye(m),p), [BA,0], A, b,[],[], [-Inf;-Inf;0]);
         ddym = result(1:2);
 %         A = [A1; -BA] + [Action(1); Action(2)];
 %         b = [b1+10000; Kb*etab+BB] + [Action(3); Action(4)];
@@ -284,29 +285,31 @@ function [Bx, dB, BA, BB] = B(x)
     s2 = sin(theta);
 %     a = 0.4 - theta;
 %     b = 0.4 + theta;
-    c = 10.2 + z;
-Bx = log(c+1);
-dB = (w*c2-u*s2)/(c+1);
-BA = [0,1/(c+1)];
-BB = -(w*c2-u*s2)^2/(c+1)^2;
-%     Bx = 0;%-log(a) +log(a+1);
-% %     Bx = Bx -log(b) +log(b+1);
-%     Bx = Bx -log(c) +log(c+1);
-% 
-% % dB(x) += -(1/a -1/(a+1))*adot;
-%     dB = 0;%-(1/a -1/(a+1))*(-q);
-% %     dB = dB - (1/b -1/(b+1))*q;
-%     dB = dB - (1/c -1/(c+1))*(w*c2-u*s2);
-% 
-% % ddB(x) = BA*ddy + BB
-% % BA += -(1/a -1/(a+1))*da^2
-% % BB += (1/a^2 -1/(a+1)^2)*da^2
-%     BA(1) = -(1/c -1/(c+1));
-%     BA(2) = 0;%1/a -1/(a+1);
-% %     BA(2) = BA(2) -(1/b -1/(b+1));
-%     BB = 0;%(1/a^2 -1/(a+1)^2)*q^2;
-% %     BB = BB + (1/b^2 -1/(b+1)^2)*q^2;
-%     BB = BB + (1/c^2 -1/(c+1)^2)*(w*c2-u*s2)^2;
+    c = 10.3 + z;
+
+% Bx = log(c+1);
+% dB = (w*c2-u*s2)/(c+1);
+% BA = [0,1/(c+1)];
+% BB = -(w*c2-u*s2)^2/(c+1)^2;
+
+    Bx = 0;%-log(a) +log(a+1);
+%     Bx = Bx -log(b) +log(b+1);
+    Bx = Bx -log(c) +log(c+1);
+
+% dB(x) += -(1/a -1/(a+1))*adot;
+    dB = 0;%-(1/a -1/(a+1))*(-q);
+%     dB = dB - (1/b -1/(b+1))*q;
+    dB = dB - (1/c -1/(c+1))*(w*c2-u*s2);
+
+% ddB(x) = BA*ddy + BB
+% BA += -(1/a -1/(a+1))*da^2
+% BB += (1/a^2 -1/(a+1)^2)*da^2
+    BA(1) = -(1/c -1/(c+1));
+    BA(2) = 0;%1/a -1/(a+1);
+%     BA(2) = BA(2) -(1/b -1/(b+1));
+    BB = 0;%(1/a^2 -1/(a+1)^2)*q^2;
+%     BB = BB + (1/b^2 -1/(b+1)^2)*q^2;
+    BB = BB + (1/c^2 -1/(c+1)^2)*(w*c2-u*s2)^2;
 
 end
 
