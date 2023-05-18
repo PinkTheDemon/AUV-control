@@ -95,13 +95,13 @@ for i = 1:N
         % CBF
         [Bx, Bdot, BA, BB] = B(x);
         etab = [Bx, Bdot];
-        Action = zeros(8,1);
+        Action = zeros(1,12);
 %         Action = evaluatePolicy(eta);
-        Action(5) = -2.*eta.'*Peps*G*[w1()*c2;w2()]; % Action 真实值
-        Action(6:8) = BA*[w1()*c2;w2()]; % Action 真实值
+        Action(9) = -2.*eta.'*Peps*G*[w1()*c2;w2()]; % Action 真实值
+        Action(10:12) = BA*[w1()*c2;w2()]; % Action 真实值
         p = 100; % 放松CLF，目前的场景还不需要对p做调整
-        A = [[A1,-1];[-BA,[0;0;0]]] + [Action(1); Action(2:4)];
-        b = [b1; etab*Kb+BB] + [Action(5); Action(6:8)];
+        A = [[A1+Action(1:2),-1];[-BA+reshape(Action(3:8),[3,2]),[0;0;0]]];
+        b = [b1+Action(9); etab*Kb+BB+Action(10:12).'];
 %         result = quadprog(blkdiag(eye(m),p), 0.5.*[], A, b,[],[], [-Inf;-Inf;0]);
 %         ddym = result(1:2);
 %         A = [A1; -BA] + [Action(1); Action(2)];
@@ -156,9 +156,9 @@ for i = 1:N
     B_ses(1,i) = Bx(3);
     B_ses(2,i) = Bdot(3);
     dV = 2.*eta.'*Peps*G*ddyreal; % 删去相同项，系数项不能约，因为Action是包括了系数项的
-    dVhat = 2.*eta.'*Peps*G*ddylast - Action(5);
+    dVhat = 2.*eta.'*Peps*G*ddylast - Action(9);
     ddB = BA*ddyreal;
-    ddBhat = BA*ddylast + Action(6:8);
+    ddBhat = BA*ddylast + Action(10:12);
     if i > 1
         reward = reward - (dV-dVhat)^2 - norm(ddB-ddBhat)^2;
     end
