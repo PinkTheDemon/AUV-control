@@ -95,13 +95,13 @@ for i = 1:N
         % CBF
         [Bx, Bdot, BA, BB] = B(x);
         etab = [Bx, Bdot];
-        Action = zeros(1,12);
+        Action = zeros(12,1);
 %         Action = evaluatePolicy(eta);
         Action(9) = -2.*eta.'*Peps*G*[w1()*c2;w2()]; % Action 真实值
         Action(10:12) = BA*[w1()*c2;w2()]; % Action 真实值
         p = 100; % 放松CLF，目前的场景还不需要对p做调整
-        A = [[A1+Action(1:2),-1];[-BA+reshape(Action(3:8),[3,2]),[0;0;0]]];
-        b = [b1+Action(9); etab*Kb+BB+Action(10:12).'];
+        A = [[A1+Action(1:2).',-1];[-BA+reshape(Action(3:8),[3,2]),[0;0;0]]];
+        b = [b1+Action(9); etab*Kb+BB+Action(10:12)];
 %         result = quadprog(blkdiag(eye(m),p), 0.5.*[], A, b,[],[], [-Inf;-Inf;0]);
 %         ddym = result(1:2);
 %         A = [A1; -BA] + [Action(1); Action(2)];
