@@ -31,6 +31,7 @@ x_ses = zeros(5,N);
 x_pos = zeros(1,N);
 xpos  = 0;
 V_ses = zeros(1,N);
+B_ses = zeros(1,N);
 Y_ses = zeros(4,N);
 reward = 0;
 
@@ -58,9 +59,9 @@ gamma = lamdaQ/lamdaP;
 % CBF极点配置计算Kb
 Fb = [0 1;0 0];
 Gb = [0;1];
-poles = [-2+5i, -2-5i];
-% Kb = place(Fb, Gb, poles); % 极点配置
-Kb = [10,10];
+poles = [-1, -2];
+Kb = place(Fb, Gb, poles).'; % 极点配置
+% Kb = [10,10];
 
 % -------------------------------------------------------------------------
 % % try yalmip
@@ -93,30 +94,31 @@ for i = 1:N
 %         Bx=0; Bdot=0; BA=[0,0]; BB=0;
         % CBF
         [Bx, Bdot, BA, BB] = B(x);
-        etab = [Bx; Bdot];
-        Action = zeros(4,1);
+        etab = [Bx, Bdot];
+        Action = zeros(8,1);
 %         Action = evaluatePolicy(eta);
-%         Action(3) = -2.*eta.'*Peps*G*[w1()*c2;w2()]; % Action 真实值
-%         Action(4) = BA(1)*w1()*c2; % Action 真实值
+        Action(5) = -2.*eta.'*Peps*G*[w1()*c2;w2()]; % Action 真实值
+        Action(6:8) = BA*[w1()*c2;w2()]; % Action 真实值
         p = 100; % 放松CLF，目前的场景还不需要对p做调整
-        A = [[A1,-1];[BA,0]] + [Action(1); Action(2)];
-        b = [b1+max(0,0); Kb*etab+BB] + [Action(3); Action(4)];
-        result = quadprog(blkdiag(eye(m),p), [BA,0], A, b,[],[], [-Inf;-Inf;0]);
-        ddym = result(1:2);
+        A = [[A1,-1];[-BA,[0;0;0]]] + [Action(1); Action(2:4)];
+        b = [b1; etab*Kb+BB] + [Action(5); Action(6:8)];
+%         result = quadprog(blkdiag(eye(m),p), 0.5.*[], A, b,[],[], [-Inf;-Inf;0]);
+%         ddym = result(1:2);
 %         A = [A1; -BA] + [Action(1); Action(2)];
-%         b = [b1+10000; Kb*etab+BB] + [Action(3); Action(4)];
-%         [ddym,favl,exitflag] = quadprog(eye(m), zeros(m,1), A, b);
+%         b = [b1; Kb*etab+BB] + [Action(3); Action(4)];
+%         [ddym,favl,exitflag] = quadprog(eye(m), [], A, b);
 
         % gurobi求解二次规划 ----------------------------------------------
-%         model.Q = sparse(blkdiag(eye(m),p));
-%         model.A = sparse(A);
-%         model.rhs = b;
-%         model.lb = [-Inf;-Inf;-Inf];
-%         params.outputflag = 0;
-%         results = gurobi(model,params);
-%         if isfield(results, 'x') 
-%             ddyg = results.x(1:2);
-%         end
+        model.Q = sparse(blkdiag(eye(m),p));
+%         model.obj = 0.2.*[BA,0];
+        model.A = sparse(A);
+        model.rhs = b;
+        model.lb = [-Inf;-Inf;0];
+        params.outputflag = 0;
+        results = gurobi(model,params);
+        if isfield(results, 'x') 
+            ddyg = results.x(1:2);
+        end
         % 手动求解二次规划 -------------------------------------------------
 %         A1 = A(1,:);
 %         A2 = A(2,:);
@@ -132,7 +134,7 @@ for i = 1:N
 %         end
 %         ddys = ddys(1:2);
         % -----------------------------------------------------------------
-        ddy = ddym;
+        ddy = ddyg; % ddy = [ddz;ddtheta]
     else
         ddy = [0;0];
     end
@@ -151,12 +153,14 @@ for i = 1:N
     Y_ses(:,i) = [ddy; mu];
     V = eta.'*Peps*eta;
     V_ses(i) = V; % 为什么V会在某一段有抖动上升？因为仿真步长太大
+    B_ses(1,i) = Bx(3);
+    B_ses(2,i) = Bdot(3);
     dV = 2.*eta.'*Peps*G*ddyreal; % 删去相同项，系数项不能约，因为Action是包括了系数项的
-    dVhat = 2.*eta.'*Peps*G*ddylast - Action(3);
+    dVhat = 2.*eta.'*Peps*G*ddylast - Action(5);
     ddB = BA*ddyreal;
-    ddBhat = BA*ddylast + Action(4);
+    ddBhat = BA*ddylast + Action(6:8);
     if i > 1
-        reward = reward - (dV-dVhat)^2 - (ddB-ddBhat)^2;
+        reward = reward - (dV-dVhat)^2 - norm(ddB-ddBhat)^2;
     end
 
 %     % 简单情况，比CLF效果反而要好，说明CLF中b项过于保守
@@ -246,17 +250,23 @@ figure(7)
 plot(1:N, V_ses(1,:));
 title('Lyapunov func value'); xlabel('step'); ylabel('V'); grid;
 
-% ydot-t plot
+% Barrier B-t plot
 figure(8)
-plot(1:N, Y_ses(1,:)); hold on;
-plot(1:N, Y_ses(2,:));
-title('ydot-t plot'); xlabel('t'); ylabel('ydot'); legend('zdot', 'thetadot'); grid;
+plot(1:N, B_ses(1,:), '-'); hold on;
+plot(1:N, B_ses(1,1)*exp(-Kb(1)*(1:N))+B_ses(2,1)*exp(-Kb(2)*(1:N)), 'r--');
+title('Barrier func value'); xlabel("step"); ylabel('Bx'); grid;
 
-% mu-t plot
-figure(9)
-plot(1:N, Y_ses(3,:)); hold on;
-plot(1:N, Y_ses(4,:));
-title('mu-t plot'); xlabel('t'); ylabel('mu'); legend('mu1', 'mu2'); grid;
+% % ydot-t plot
+% figure(9)
+% plot(1:N, Y_ses(1,:)); hold on;
+% plot(1:N, Y_ses(2,:));
+% title('ydot-t plot'); xlabel('t'); ylabel('ydot'); legend('zdot', 'thetadot'); grid;
+% 
+% % mu-t plot
+% figure(10)
+% plot(1:N, Y_ses(3,:)); hold on;
+% plot(1:N, Y_ses(4,:));
+% title('mu-t plot'); xlabel('t'); ylabel('mu'); legend('mu1', 'mu2'); grid;
 
 %% define refference trajectory
 function ref_traj = zr(x)
@@ -283,41 +293,41 @@ function [Bx, dB, BA, BB] = B(x)
     theta = x(5);
     c2 = cos(theta);
     s2 = sin(theta);
-%     a = 0.4 - theta;
-%     b = 0.4 + theta;
-    c = 10.3 + z;
+    a = 0.2 - theta;
+    b = 0.2 + theta;
+    c = 10.2 + z;
 
-% Bx = log(c+1);
-% dB = (w*c2-u*s2)/(c+1);
-% BA = [0,1/(c+1)];
-% BB = -(w*c2-u*s2)^2/(c+1)^2;
+Bx = [a;b;c];
+dB = [-q;q;(w*c2-u*s2)];
+BA = [0,-1;0,1;1,0];
+BB = [0;0;0];
 
-    Bx = 0;%-log(a) +log(a+1);
+%     Bx = -log(a) +log(a+1);
 %     Bx = Bx -log(b) +log(b+1);
-    Bx = Bx -log(c) +log(c+1);
-
-% dB(x) += -(1/a -1/(a+1))*adot;
-    dB = 0;%-(1/a -1/(a+1))*(-q);
+%     Bx = Bx -log(c) +log(c+1);
+% 
+% % dB(x) += -(1/a -1/(a+1))*adot;
+%     dB = -(1/a -1/(a+1))*(-q);
 %     dB = dB - (1/b -1/(b+1))*q;
-    dB = dB - (1/c -1/(c+1))*(w*c2-u*s2);
-
-% ddB(x) = BA*ddy + BB
-% BA += -(1/a -1/(a+1))*da^2
-% BB += (1/a^2 -1/(a+1)^2)*da^2
-    BA(1) = -(1/c -1/(c+1));
-    BA(2) = 0;%1/a -1/(a+1);
+%     dB = dB - (1/c -1/(c+1))*(w*c2-u*s2);
+% 
+% % ddB(x) = BA*ddy + BB
+% % BA += -(1/a -1/(a+1))*dda
+% % BB += (1/a^2 -1/(a+1)^2)*da^2
+%     BA(1) = -(1/c -1/(c+1));
+%     BA(2) = 1/a -1/(a+1);
 %     BA(2) = BA(2) -(1/b -1/(b+1));
-    BB = 0;%(1/a^2 -1/(a+1)^2)*q^2;
+%     BB = (1/a^2 -1/(a+1)^2)*q^2;
 %     BB = BB + (1/b^2 -1/(b+1)^2)*q^2;
-    BB = BB + (1/c^2 -1/(c+1)^2)*(w*c2-u*s2)^2;
+%     BB = BB + (1/c^2 -1/(c+1)^2)*(w*c2-u*s2)^2;
 
 end
 
 %% set model error
 function mderr1 = w1()
-    mderr1 = 0; %0.01*randn();
+    mderr1 = 1; %0.01*randn();
 end
 
 function mderr2 = w2()
-    mderr2 = 0; %1*randn();
+    mderr2 = 2; %1*randn();
 end

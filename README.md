@@ -160,3 +160,23 @@ result = quadprog(blkdiag(eye(m),p), [BA,0], A, b,[],[], [-Inf;-Inf;0]);
 运行结果如下图：
 
 ![](https://z4a.net/images/2023/05/04/QP.png)
+
+### 20230518 修改Bx
+
+修改 $B(x)$ 为：
+
+```matlab
+a = 0.2 - theta;
+b = 0.2 + theta;
+c = 10.2 + z;
+Bx = [a;b;c];
+```
+
+并将CBF改正为ES-CBF形式：
+$$
+\dot{B}(x)+\gamma B(x)≥0
+$$
+选择gurobi求解二次规划问题（用MATLAB自带的quadprog会导致结果不正确，尚不清楚原因），结果如下：
+
+![](https://z4a.net/images/2023/05/18/BxabcCBF.png)
+
