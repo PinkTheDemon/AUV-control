@@ -33,6 +33,7 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
         xpos    = 0;
         ddylast = zeros(2,1);
         stepnum = 0;
+        cache   = 0; % 用来暂存一些值
     end
     
     properties(Access = protected)
@@ -48,13 +49,14 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
             % Initialize Observation settings
             ObservationInfo = rlNumericSpec([4 1]);
             ObservationInfo.Name = 'AUV States';
-            ObservationInfo.Description = 'z, dz, theta, dtheta';
+            ObservationInfo.Description = 'z-zr, theta, dz, dtheta';
             
             % Initialize Action settings   
+%             ActionInfo = rlNumericSpec([12 1]);
             ActionInfo = rlNumericSpec([4 1]);
             ActionInfo.Name = 'compensate term';
-            ActionInfo.LowerLimit = -1e3*ones(4,1);
-            ActionInfo.UpperLimit =  1e3*ones(4,1);
+%             ActionInfo.LowerLimit = -1e2*ones(12,1);
+%             ActionInfo.UpperLimit =  1e2*ones(12,1);
             
             % The following line implements built-in functions of RL env
             this = this@rl.env.MATLABEnvironment(ObservationInfo,ActionInfo);
@@ -82,9 +84,6 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
             % Cache to avoid recomputation
             s2    = sin(theta);
             c2    = cos(theta);
-            dxp = w*s2 + u*c2;
-            dz  = w*c2 - u*s2;
-            dtheta = q;
 
 %             eta = [(z-zr(this)); theta; dz; dtheta];
             if sum(eta.'*eta) ~= 0
@@ -94,24 +93,56 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
                      - this.Gamma/this.epsilon.*eta.'*this.Peps*eta;
                 % CBF
                 [Bx, Bdot, BA, BB] = B(this);
-                etab = [Bx; Bdot];
+                etab = [Bx, Bdot];
                 % 放松CLF
-                p = 1;
-                A = [[A1,-1]; [BA,0]] + [Action(1); Action(2)]; % action为RL项
-                b = [b1; this.Kb*etab+BB]  + [Action(3); Action(4)];
+                p = 100;
+%                 A = [[A1+Action(1:2).',-1];[-BA+reshape(Action(3:8),[3,2]),[0;0;0]]]; % action为RL项
+%                 b = [(b1+Action(9)); etab*this.Kb+BB+Action(10:12)];
+                A = [[A1,-1];[-BA,[0;0;0]]]; % action为RL项
+                b = [(b1+Action(1)); etab*this.Kb+BB+Action(2:4)];
                 IsDone = this.IsDone;
                 IsDone = IsDone || any(any(isinf(A)+isinf(b)));
                 IsDone = IsDone || any(isinf(this.x));
                 IsDone = IsDone || ~isreal(Bx);
                 if ~IsDone
-                    result = quadprog(blkdiag(eye(this.m),p), zeros(this.m+1,1), A, b);
-                    ddy = result(1:2);
+%                     result = quadprog(blkdiag(eye(this.m),p), zeros(this.m+1,1), A, b);
+%                     ddy = result(1:2);
+
+                    % A的系数之间相差过大很可能是导致求解器出现数值问题的原因
+                    % 因此对系数数量级进行调整
+                    temp_num1 = norm(A(1,:));
+                    temp_num2 = norm(A(2,:));
+                    temp_mod  = log10(temp_num1/temp_num2);
+                    temp_mod  = roundn(temp_mod,0);
+                    temp_num1 = 10^(-temp_mod);
+                    A(1,:) = temp_num1*A(1,:);
+                    b(1)   = temp_num1*b(1);
+                    clear temp_num1 temp_num2 temp_mod
+                    % -----------------------------------------------------
+
+                    model.Q = sparse(blkdiag(eye(this.m),p));
+%                   model.obj = 0.2.*[BA,0];
+                    model.A = sparse(A);
+                    model.rhs = b;
+                    model.lb = [-Inf;-Inf;0];
+                    params.outputflag = 0;
+                    results = gurobi(model,params);
+                    if isfield(results, 'x') 
+                        ddy = results.x(1:2);
+%                     elseif results.status == "INF_OR_UNBD"
+%                         ddy = A\b;%[0;0]; % 这里会出问题，加上Action之后，QP很有可能无解或无界解，导致gurobi不能给出results.x
+% %                       这里如果无解，直接IsDone=0结束掉，如果无界解，再看怎么人为解决一下
+%                         ddy = ddy(1:2);
+                    else %if results.status == "INFEASIBLE" % 可能会有其他情况？
+                        ddy = this.ddylast; % 为什么无解会报成无界解？
+                        IsDone = 1;
+                    end
                 else 
                     ddy = [0;0];
                 end
             else 
                 ddy = [0;0];
-                IsDone = 0;
+%                 IsDone = 0;
                 BA = [0,0];
             end
             [F1, G1, F2, G2] = REMUS_XOZ(this.x); % 这是标称模型，与实际模型有误差
@@ -129,12 +160,23 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
                               q];
             ddyreal = (dx(4:5) - this.dState(4:5))/this.Ts;
             
-            % Euler integration
-            Observation = [(z-zr(this)); theta; dz; dtheta];
 
             % Update system states
-            this.State  = Observation;
             this.x = this.x + this.Ts.*dx;
+
+            u     = this.x(1);
+            w     = this.x(2);
+            q     = this.x(3);
+            z     = this.x(4);
+            theta = this.x(5);
+            s2    = sin(theta);
+            c2    = cos(theta);
+            dxp = w*s2 + u*c2;
+            dz  = w*c2 - u*s2;
+            dtheta = q;
+            Observation = [z-zr(this); theta; dz; dtheta];
+            this.State  = Observation;
+
             this.dState = dx;
             this.xpos = this.xpos + this.Ts*dxp;
             this.ddylast = ddy;
@@ -164,7 +206,6 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
             z0 = -5;
             % theta
             theta0 = 0.15;
-            InitialObservation = [0;0;0;0];
             Initialx = [u0;w0;q0;z0;theta0];
 
             % CLF系数矩阵Peps计算
@@ -180,18 +221,21 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
             % CBF极点配置计算Kb
             Fb = [0 1;0 0];
             Gb = [0;1];
-            poles = [-1+2i, -1-2i];
-            kb = place(Fb, Gb, poles); % 极点配置
+            poles = [-1, -2];
+            kb = place(Fb, Gb, poles).'; % 极点配置
 
-            this.State = InitialObservation;
             this.x = Initialx;
             this.xpos = 0;
             this.dState = zeros(5,1);
+            this.ddylast = [0;0];
+            InitialObservation = [z0-zr(this); theta0; w0*cos(theta0)-u0*sin(theta0); q0];
+            this.State = InitialObservation;
             this.Peps = peps;
             this.Gamma = gamma;
             this.Kb = kb;
             this.stepnum = 0;
             this.IsDone = false;
+            this.cache  = 0;
             
             % (optional) use notifyEnvUpdated to signal that the 
             % environment has been updated (e.g. to update visualization)
@@ -262,28 +306,15 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
             theta = this.x(5);
             c2 = cos(theta);
             s2 = sin(theta);
-%             a = 0.4 - theta;
-%             b = 0.4 + theta;
-            c = 10.4 + z;
+            a = 0.5 - theta;
+            b = 0.5 + theta;
+            c = 11.5 + z;
 
-            Bx = 0;%-log(a) +log(a+1);
-%             Bx = Bx -log(b) +log(b+1);
-            Bx = Bx -log(c) +log(c+1);
+            Bx = [a;b;c];
+            dB = [-q;q;(w*c2-u*s2)];
+            BA = [0,-1;0,1;1,0];
+            BB = [0;0;0];
 
-        % dB(x) += -(1/a -1/(a+1))*adot;
-            dB = 0;%-(1/a -1/(a+1))*(-q);
-%             dB = dB - (1/b -1/(b+1))*q;
-            dB = dB - (1/c -1/(c+1))*(w*c2-u*s2);
-
-        % ddB(x) = BA*ddy + BB
-        % BA += -(1/a -1/(a+1))*da^2
-        % BB += (1/a^2 -1/(a+1)^2)*da^2
-            BA(1) = -(1/c -1/(c+1));
-            BA(2) = 0;%1/a -1/(a+1);
-%             BA(2) = BA(1) -(1/b -1/(b+1));
-            BB = 0;%(1/a^2 -1/(a+1)^2)*q^2;
-%             BB = BB + (1/b^2 -1/(b+1)^2)*q^2;
-            BB = BB + (1/c^2 -1/(c+1)^2)*(w*c2-u*s2)^2;
         end
 
         % update the action info based on max force
@@ -296,17 +327,21 @@ classdef MyEnvClass < rl.env.MATLABEnvironment
         % 奖励设置错误
         function Reward = getReward(this, Action, ddyreal, BA)
             if this.stepnum == 1 || this.stepnum == 2
-                Reward = 0;
+                Reward = 0; % 这里可能不太合适
             elseif ~this.IsDone
                 Reward = -this.wv*(2.*this.State.'*this.Peps*this.G*ddyreal - ...
-                          2.*this.State.'*this.Peps*this.G*this.ddylast + Action(3))^2 ...
-                         -this.wb*(BA*ddyreal - BA*this.ddylast -Action(4))^2;
-                if isinf(Reward)
-%                     this.IsDone = 1;
-%                     Reward = -1e5;
+                          2.*this.State.'*this.Peps*this.G*this.ddylast + Action(1))^2 ...
+                         -this.wb*norm(BA*ddyreal - BA*this.ddylast -Action(2:4))^2;
+                if Reward<=-1e7 || isinf(Reward)
+                    this.IsDone = 1;
+                    Reward = -1e7;
                 end
-            elseif this.IsDone
-                Reward = -1e5*(this.Maxstepnum - this.stepnum);
+            end
+            if this.IsDone && this.cache==0
+                Reward = -1e7*(this.Maxstepnum - this.stepnum);
+                this.cache = this.stepnum;
+            elseif this.IsDone && this.cache~=0
+                Reward = 0;
             end
         end
 

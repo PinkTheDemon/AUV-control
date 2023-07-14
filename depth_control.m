@@ -11,7 +11,7 @@ clear ; clc ; close ;
 
 % system constant value
 Tf = 60;   % 仿真总时间
-Ts = 0.01; % 单步时间(s)
+Ts = 0.01; % 单步时间(s)0.05
 N  = Tf/Ts;
 
 %% controller
@@ -96,17 +96,32 @@ for i = 1:N
         [Bx, Bdot, BA, BB] = B(x);
         etab = [Bx, Bdot];
         Action = zeros(12,1);
-%         Action = evaluatePolicy(eta);
-        Action(9) = -2.*eta.'*Peps*G*[w1()*c2;w2()]; % Action 真实值
-        Action(10:12) = BA*[w1()*c2;w2()]; % Action 真实值
+        Action = evaluatePolicy(eta);
+%         Action(9) = -2.*eta.'*Peps*G*[w1()*c2;w2()]; % Action 真实值
+%         Action(10:12) = BA*[w1()*c2;w2()]; % Action 真实值
         p = 100; % 放松CLF，目前的场景还不需要对p做调整
-        A = [[A1+Action(1:2).',-1];[-BA+reshape(Action(3:8),[3,2]),[0;0;0]]];
-        b = [b1+Action(9); etab*Kb+BB+Action(10:12)];
-%         result = quadprog(blkdiag(eye(m),p), 0.5.*[], A, b,[],[], [-Inf;-Inf;0]);
-%         ddym = result(1:2);
+%         A = [[A1+Action(1:2).',-1];[-BA+reshape(Action(3:8),[3,2]),[0;0;0]]];
+%         b = [(b1+Action(9)); etab*Kb+BB+Action(10:12)];
+        A = [[A1,-1];[-BA,[0;0;0]]]; % action为RL项
+        b = [(b1+Action(1)); etab*Kb+BB+Action(2:4)];
+
+        % A的系数之间相差过大很可能是导致求解器出现数值问题的原因
+        % 因此对系数数量级进行调整
+        temp_num1 = norm(A(1,:));
+        temp_num2 = norm(A(2,:));
+        temp_mod  = log10(temp_num1/temp_num2);
+        temp_mod  = roundn(temp_mod,0);
+        temp_num1 = 10^(-temp_mod);
+        A(1,:) = temp_num1*A(1,:);
+        b(1)   = temp_num1*b(1);
+        clear temp_num1 temp_num2 temp_mod
+        % -----------------------------------------------------
+
+        result = quadprog(blkdiag(eye(m),p), 0.5.*[], A, b,[],[], [-Inf;-Inf;0]);
+        sigmam = result(1:2);
 %         A = [A1; -BA] + [Action(1); Action(2)];
 %         b = [b1; Kb*etab+BB] + [Action(3); Action(4)];
-%         [ddym,favl,exitflag] = quadprog(eye(m), [], A, b);
+%         [sigmam,favl,exitflag] = quadprog(eye(m), [], A, b);
 
         % gurobi求解二次规划 ----------------------------------------------
         model.Q = sparse(blkdiag(eye(m),p));
@@ -117,7 +132,7 @@ for i = 1:N
         params.outputflag = 0;
         results = gurobi(model,params);
         if isfield(results, 'x') 
-            ddyg = results.x(1:2);
+            sigmag = results.x(1:2);
         end
         % 手动求解二次规划 -------------------------------------------------
 %         A1 = A(1,:);
@@ -134,14 +149,14 @@ for i = 1:N
 %         end
 %         ddys = ddys(1:2);
         % -----------------------------------------------------------------
-        ddy = ddyg; % ddy = [ddz;ddtheta]
+        sigma = sigmag; % ddy = [ddz;ddtheta]
     else
-        ddy = [0;0];
+        sigma = [0;0];
     end
     % u恒定 ---------------------------------------------------------------
     % 计算当前状态下的模型参数
     [F1, G1, F2, G2] = REMUS_XOZ(x); % 这是标称模型，与实际模型有误差
-    mu = [G1*c2; G2]\(ddy - [F1*c2-w*q*s2-u*q*c2; F2]);
+    mu = [G1*c2; G2]\(sigma - [F1*c2-w*q*s2-u*q*c2; F2]);
     % dynamics (real dynamics, different from nominal model)
     ddyreal = ([-s2*u+c2*w;q] - dx(4:5))/Ts; % 根据状态量变化实际计算的真实ddy
     dx = [        0        ;
@@ -150,15 +165,15 @@ for i = 1:N
            -s2*u    + c2* w;
                           q];
     % 指标计算
-    Y_ses(:,i) = [ddy; mu];
+    Y_ses(:,i) = [sigma; mu];
     V = eta.'*Peps*eta;
     V_ses(i) = V; % 为什么V会在某一段有抖动上升？因为仿真步长太大
     B_ses(1,i) = Bx(3);
     B_ses(2,i) = Bdot(3);
     dV = 2.*eta.'*Peps*G*ddyreal; % 删去相同项，系数项不能约，因为Action是包括了系数项的
-    dVhat = 2.*eta.'*Peps*G*ddylast - Action(9);
+    dVhat = 2.*eta.'*Peps*G*ddylast - Action(1);
     ddB = BA*ddyreal;
-    ddBhat = BA*ddylast + Action(10:12);
+    ddBhat = BA*ddylast + Action(2:4);
     if i > 1
         reward = reward - (dV-dVhat)^2 - norm(ddB-ddBhat)^2;
     end
@@ -209,7 +224,7 @@ for i = 1:N
     x_ses(:,i) = x;
     xpos = xpos + dxp*Ts;
     x_pos(:,i) = xpos;
-    ddylast = ddy; % 二次规划问题的解，误差的ddy
+    ddylast = sigma; % 二次规划问题的解，误差的ddy
 end
 
 %% plot
@@ -293,9 +308,9 @@ function [Bx, dB, BA, BB] = B(x)
     theta = x(5);
     c2 = cos(theta);
     s2 = sin(theta);
-    a = 0.2 - theta;
-    b = 0.2 + theta;
-    c = 10.2 + z;
+    a = 0.5 - theta;
+    b = 0.5 + theta;
+    c = 11.5 + z;
 
 Bx = [a;b;c];
 dB = [-q;q;(w*c2-u*s2)];
