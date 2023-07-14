@@ -189,3 +189,13 @@ $$
 ![](https://z4a.net/images/2023/07/14/7-14-.png)
 
 新增的agentDataCov.mat文件是收敛的策略函数文件，DDPG_ModelCov.mat是收敛的agent文件
+
+两张效果对比图：
+
+![](https://z4a.net/images/2023/07/14/399d6ceb22865c4ae25346a5a29e7b44.png)
+
+**图1：人为补偿效果对比图**
+
+![](https://z4a.net/images/2023/07/14/586a57d4c567ee97850bb3507b76cdcc.png)
+
+**图2：无补偿效果对比图**
